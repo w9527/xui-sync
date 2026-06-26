@@ -514,6 +514,7 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str
           CASE
             WHEN cur.user_key IS NULL THEN 'not-found'
             WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
+            WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
             ELSE 'offline'
           END AS status,
           COALESCE(ips.ips_list, '') AS ips
@@ -525,6 +526,34 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str
     return row[0], row[1]
 
 
+def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, int, str]:
+    row = conn.execute(
+        """
+        WITH cur AS (
+          SELECT
+            CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key,
+            group_concat(DISTINCT email) AS matched_emails,
+            MAX(COALESCE(last_online, 0)) AS last_online
+          FROM client_traffics
+          WHERE email IS NOT NULL AND email <> ''
+            AND (CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END) = ?
+          GROUP BY user_key
+        )
+        SELECT
+          CASE
+            WHEN cur.user_key IS NULL THEN 'not-found'
+            ELSE 'seen'
+          END AS status,
+          COALESCE(cur.last_online, 0) AS last_online,
+          COALESCE(cur.matched_emails, '') AS matched_emails
+        FROM (SELECT 1)
+        LEFT JOIN cur ON 1=1
+        """,
+        (user_key,),
+    ).fetchone()
+    return row[0], row[1], row[2]
+
+
 def test_user_status_detection() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "status.db"
@@ -533,7 +562,7 @@ def test_user_status_detection() -> None:
             """
             CREATE TABLE client_traffics (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, up INTEGER, down INTEGER, all_time INTEGER, last_online INTEGER);
             CREATE TABLE inbound_client_ips (id INTEGER PRIMARY KEY AUTOINCREMENT, client_email TEXT, ips TEXT);
-            INSERT INTO client_traffics(email, up, down, all_time, last_online) VALUES ('BENZY@1', 1, 2, 3, 0), ('OTHER@1', 7, 8, 15, 16);
+            INSERT INTO client_traffics(email, up, down, all_time, last_online) VALUES ('BENZY@1', 1, 2, 3, 1700000000000), ('OTHER@1', 7, 8, 15, 16);
             INSERT INTO inbound_client_ips(client_email, ips) VALUES ('BENZY@1', '1.1.1.1,1.1.1.2');
             """,
         )
@@ -543,7 +572,29 @@ def test_user_status_detection() -> None:
             assert user_status_like_shell(conn, "MISSING")[0] == "not-found"
             conn.execute("DELETE FROM inbound_client_ips")
             conn.commit()
-            assert user_status_like_shell(conn, "BENZY")[0] == "offline"
+            assert user_status_like_shell(conn, "BENZY")[0] == "seen"
+        finally:
+            conn.close()
+            gc.collect()
+
+
+def test_user_last_online_detection() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "last-online.db"
+        exec_sql(
+            db_path,
+            """
+            CREATE TABLE client_traffics (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, up INTEGER, down INTEGER, all_time INTEGER, last_online INTEGER);
+            INSERT INTO client_traffics(email, up, down, all_time, last_online) VALUES
+              ('BENZY@1', 1, 2, 3, 1700000000000),
+              ('BENZY@2', 3, 4, 7, 1700000100000),
+              ('OTHER@1', 7, 8, 15, 1700000200000);
+            """,
+        )
+        conn = sqlite3.connect(db_path)
+        try:
+            assert user_last_online_like_shell(conn, "BENZY") == ("seen", 1700000100000, "BENZY@1,BENZY@2")
+            assert user_last_online_like_shell(conn, "MISSING") == ("not-found", 0, "")
         finally:
             conn.close()
             gc.collect()
@@ -557,6 +608,7 @@ def main() -> None:
     test_reset_specific_user_traffic()
     test_delete_user_family()
     test_user_status_detection()
+    test_user_last_online_detection()
     print("smoke tests passed")
 
 

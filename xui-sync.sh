@@ -1859,6 +1859,7 @@ cmd_user_status_node() {
       CASE
         WHEN cur.user_key IS NULL THEN 'not-found'
         WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
+        WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
         ELSE 'offline'
       END AS status,
       COALESCE(cur.matched_emails, '') AS matched_emails,
@@ -1902,6 +1903,90 @@ cmd_user_status() {
   done
 }
 
+cmd_user_last_online_node() {
+  local user_key="$(normalize_user_key "${1:-}")"
+  [[ -n "$user_key" ]] || die "usage: $0 user-last-online-node <user_key>"
+
+  need_cmd sqlite3
+  require_local_db
+
+  if ! has_table "$DB_PATH" "client_traffics"; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" ""
+    return 0
+  fi
+
+  local last_online_expr last_online_utc_expr
+  last_online_expr="0"
+  last_online_utc_expr="''"
+  if has_column "$DB_PATH" "client_traffics" "last_online"; then
+    last_online_expr="COALESCE(last_online, 0)"
+    last_online_utc_expr="CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch') ELSE '' END"
+  fi
+
+  sqlite3 -noheader -separator $'\t' "$DB_PATH" "
+    WITH cur AS (
+      SELECT
+        CASE
+          WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1)
+          ELSE email
+        END AS user_key,
+        group_concat(DISTINCT email) AS matched_emails,
+        MAX($last_online_expr) AS last_online
+      FROM client_traffics
+      WHERE email IS NOT NULL AND email <> ''
+        AND (
+          CASE
+            WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1)
+            ELSE email
+          END
+        ) = $(quote_sql_literal "$user_key")
+      GROUP BY user_key
+    )
+    SELECT
+      $(quote_sql_literal "$SERVER_ID") AS server_id,
+      $(quote_sql_literal "$user_key") AS user_key,
+      CASE
+        WHEN cur.user_key IS NULL THEN 'not-found'
+        ELSE 'seen'
+      END AS status,
+      COALESCE(cur.matched_emails, '') AS matched_emails,
+      COALESCE(cur.last_online, 0) AS last_online,
+      COALESCE($last_online_utc_expr, '') AS last_online_utc
+    FROM (SELECT 1) AS one
+    LEFT JOIN cur ON 1=1;
+  "
+}
+
+cmd_user_last_online() {
+  local user_key="$(normalize_user_key "${1:-}")"
+  [[ -n "$user_key" ]] || die "usage: $0 user-last-online <user_key>"
+
+  need_cmd ssh
+  need_cmd sqlite3
+  load_config
+
+  printf 'server\tuser_key\tstatus\tmatched_emails\tlast_online\tlast_online_utc\n'
+  local node name host user port remote_script remote_line
+  for node in "${NODES[@]}"; do
+    name="$(node_field "$node" 1)"
+    host="$(node_field "$node" 2)"
+    user="$(node_field "$node" 3)"
+    port="$(node_field "$node" 4)"
+    remote_script="$(node_field "$node" 5)"
+    [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
+
+    if ! remote_line="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' user-last-online-node $(printf '%q' "$user_key")" | tail -n 1)"; then
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "offline" "" "" ""
+      continue
+    fi
+    if [[ -n "$remote_line" ]]; then
+      printf '%s\n' "$remote_line"
+    else
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "not-found" "" "" ""
+    fi
+  done
+}
+
 usage() {
   cat <<EOF
 Usage:
@@ -1927,6 +2012,7 @@ Config Sync (配置同步):
   $0 config-add-user <username> <password> [login_secret]
   $0 delete-user <user_key>
   $0 user-status <user_key>
+  $0 user-last-online <user_key>
 
 Environment:
   DB_PATH=$DEFAULT_DB
@@ -1963,8 +2049,10 @@ main() {
     config-add-user|add-user) cmd_config_add_user "$@" ;;
     delete-user) cmd_delete_user "$@" ;;
     user-status) cmd_user_status "$@" ;;
+    user-last-online) cmd_user_last_online "$@" ;;
     delete-user-node) cmd_delete_user_node "$@" ;;
     user-status-node) cmd_user_status_node "$@" ;;
+    user-last-online-node) cmd_user_last_online_node "$@" ;;
     -h|--help|help|"") usage ;;
     *) die "unknown command: $cmd" ;;
   esac
