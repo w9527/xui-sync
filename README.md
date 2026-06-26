@@ -124,6 +124,7 @@ CONFIG_MASTER_NODE="sg-01"
 
 `summary` 里的 `up`、`down`、`all_time` 也会以 `M` 为单位显示。
 `summary` 里的 `last_online` 会改为东八区（UTC+8）的可读时间。
+`summary` 输出列为 `user_key`、`up(M)`、`down(M)`、`all_time(M)`、`last_online_time`、`seen_count`。
 
 ### 流量重置
 
