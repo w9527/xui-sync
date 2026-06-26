@@ -41,9 +41,25 @@ apt-get install -y sqlite3 tar openssh-client openssh-server
 
 ### 2. 安装脚本
 
+默认安装到 `/usr/local/bin`：
+
 ```bash
-install -m 0755 xui-sync.sh /usr/local/bin/xui-sync.sh
+./xui-sync.sh install
 ```
+
+指定本地安装目录：
+
+```bash
+./xui-sync.sh install /opt/bin
+```
+
+如果要拷贝到远程服务器：
+
+```bash
+./xui-sync.sh install 522 hostess.195522.xyz /root/bin
+```
+
+如果远端登录用户不是当前用户名，可以先设置 `INSTALL_REMOTE_USER=root`，或者直接用 `user@host` 形式的主机名。
 
 如果你在 Windows 上把项目目录加入 `PATH`，建议直接用：
 

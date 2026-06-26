@@ -5,6 +5,7 @@ APP_NAME="xui-sync"
 DEFAULT_DB="/etc/x-ui/x-ui.db"
 DEFAULT_WORKDIR="/var/lib/xui-sync"
 DEFAULT_SERVICE="x-ui"
+DEFAULT_INSTALL_DIR="/usr/local/bin"
 
 DB_PATH="${DB_PATH:-$DEFAULT_DB}"
 WORKDIR="${WORKDIR:-$DEFAULT_WORKDIR}"
@@ -18,6 +19,7 @@ SERVER_ID="${SERVER_ID:-$(hostname -f 2>/dev/null || hostname)}"
 STOP_SERVICE_ON_APPLY="${STOP_SERVICE_ON_APPLY:-1}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-5}"
 SSH_BASE_OPTS=(-o BatchMode=yes -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o ServerAliveInterval=5 -o ServerAliveCountMax=1 -o ConnectionAttempts=1)
+INSTALL_REMOTE_USER="${INSTALL_REMOTE_USER:-$(id -un 2>/dev/null || printf '%s' "${USER:-root}")}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/xui-sync.conf}"
@@ -165,6 +167,54 @@ cmd_export() {
     tar -C "$snapshot_dir" -czf "$archive" x-ui.db manifest.env
   fi
   printf '%s\n' "$archive"
+}
+
+cmd_install() {
+  need_cmd install
+
+  local source dest_dir port host target target_user target_path target_file
+  source="$SCRIPT_DIR/xui-sync.sh"
+  [[ -f "$source" ]] || die "source script not found: $source"
+
+  case "$#" in
+    0)
+      dest_dir="$DEFAULT_INSTALL_DIR"
+      ;;
+    1)
+      dest_dir="$1"
+      ;;
+    3)
+      port="$1"
+      host="$2"
+      dest_dir="$3"
+      ;;
+    *)
+      die "usage: $0 install [dest_dir] | install <port> <host> <dest_dir>"
+      ;;
+  esac
+
+  if [[ -z "${port:-}" ]]; then
+    mkdir -p "$dest_dir"
+    install -m 0755 "$source" "$dest_dir/$(basename "$source")"
+    log "installed locally to $dest_dir/$(basename "$source")"
+    return 0
+  fi
+
+  need_cmd ssh
+  need_cmd scp
+
+  target="$host"
+  if [[ "$target" != *@* ]]; then
+    target="$INSTALL_REMOTE_USER@$target"
+  fi
+  target_user="${target%@*}"
+  target_path="$dest_dir"
+  target_file="$target_path/$(basename "$source")"
+
+  ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$target" "mkdir -p $(printf '%q' "$target_path")"
+  scp "${SSH_BASE_OPTS[@]}" -P "$port" "$source" "$target:$(printf '%q' "$target_file")" >/dev/null
+  ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$target" "chmod 0755 $(printf '%q' "$target_file")"
+  log "installed remotely to $target:$target_file"
 }
 
 write_merge_sql() {
@@ -2060,6 +2110,8 @@ usage() {
 Usage:
 
 Traffic Sync (流量同步):
+  $0 install [dest_dir]
+  $0 install <port> <host> <dest_dir>
   $0 export
   $0 merge-dir [snapshots_dir] [output_db]
   $0 apply-traffic /path/to/merged-traffic.db
@@ -2102,6 +2154,7 @@ main() {
   shift || true
   case "$cmd" in
     export) cmd_export "$@" ;;
+    install) cmd_install "$@" ;;
     merge-dir) cmd_merge_dir "$@" ;;
     apply-traffic) cmd_apply_traffic "$@" ;;
     master) cmd_master "$@" ;;
