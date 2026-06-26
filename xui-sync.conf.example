@@ -22,3 +22,7 @@ CONFIG_SYNC_ENABLED=0
 # Specify which node is the master for configuration (must match a node_name in NODES)
 # Configuration from this node will be synced to all other nodes
 CONFIG_MASTER_NODE="sg-01"
+
+# user-status treats clients with recent last_online timestamps as online.
+# Unit: milliseconds. Default: 60000.
+USER_STATUS_ONLINE_GRACE_MS=60000

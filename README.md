@@ -241,6 +241,7 @@ WORKDIR=/var/lib/xui-sync
 STATE_DB=/var/lib/xui-sync/state.db
 MASTER_STATE_DB=/var/lib/xui-sync/master/state.db
 SSH_CONNECT_TIMEOUT=5
+USER_STATUS_ONLINE_GRACE_MS=60000
 SYNC_INBOUND_TRAFFIC=0
 CONFIG_MASTER_NODE=sg-01
 SERVICE_NAME=x-ui
@@ -271,6 +272,7 @@ systemctl start x-ui
 - 不要把真实的 `xui-sync.conf` 和 `x-ui.db` 提交到公开仓库
 - 用户家族是按 `@` 前缀匹配，不是按完整 email 字符串匹配
 - 如果某台节点离线，脚本会按 `SSH_CONNECT_TIMEOUT` 等待后跳过
+- `user-status` 把最近 `USER_STATUS_ONLINE_GRACE_MS` 毫秒内出现过的 `last_online` 视为当前在线
 
 ## Release Notes
 
