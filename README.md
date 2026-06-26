@@ -203,6 +203,7 @@ CONFIG_MASTER_NODE="sg-01"
 连不上的节点会单独出现在 `connection errors` 分组里。
 每个分组都会重复输出自己的列头，方便单独复制查看。
 输出中的 `last_online_time` 是按东八区（UTC+8）转换后的可读时间。
+`user-status` 里的 `up`、`down`、`all_time` 会以 `M` 为单位显示。
 
 这里的“在线”判断优先看当前连接痕迹；如果当前没有连接痕迹，但 `last_online` 还在最近窗口内，也会算作 `online`。
 `last_online` 只作为上次在线时间展示，不会把很久以前的记录算成当前在线。

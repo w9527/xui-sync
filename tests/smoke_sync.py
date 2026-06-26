@@ -489,12 +489,17 @@ def test_delete_user_family() -> None:
             gc.collect()
 
 
-def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int = 1700000005000, grace_ms: int = 60000) -> tuple[str, str, str]:
+def fmt_m(value: int) -> str:
+    return f"{value / 1024 / 1024:.2f}M"
+
+
+def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int = 1700000005000, grace_ms: int = 60000) -> tuple[str, str, str, str, str, str, str]:
     row = conn.execute(
         """
         WITH cur AS (
           SELECT
             CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key,
+            group_concat(DISTINCT email) AS matched_emails,
             SUM(COALESCE(up, 0)) AS up,
             SUM(COALESCE(down, 0)) AS down,
             SUM(COALESCE(all_time, COALESCE(up, 0) + COALESCE(down, 0))) AS all_time,
@@ -518,17 +523,21 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int 
             WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
             ELSE 'offline'
           END AS status,
+          COALESCE(cur.matched_emails, '') AS matched_emails,
           COALESCE(ips.ips_list, '') AS ips,
-          CASE WHEN COALESCE(cur.last_online, 0) > 0 THEN datetime(CAST(cur.last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time
+          CASE WHEN COALESCE(cur.last_online, 0) > 0 THEN datetime(CAST(cur.last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time,
+          ? AS up,
+          ? AS down,
+          ? AS all_time
         FROM ips
         LEFT JOIN cur ON 1=1
         """,
-        (user_key, user_key, now_ms, grace_ms),
+        (user_key, user_key, now_ms, grace_ms, fmt_m(1), fmt_m(2), fmt_m(3)),
     ).fetchone()
-    return row[0], row[1], row[2]
+    return row[0], row[1], row[2], row[3], row[4], row[5], row[6]
 
 
-def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, int, str, str]:
+def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, str, str]:
     row = conn.execute(
         """
         WITH cur AS (
@@ -546,7 +555,6 @@ def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tupl
             WHEN cur.user_key IS NULL THEN 'not-found'
             ELSE 'seen'
           END AS status,
-          COALESCE(cur.last_online, 0) AS last_online,
           COALESCE(cur.matched_emails, '') AS matched_emails,
           CASE WHEN COALESCE(cur.last_online, 0) > 0 THEN datetime(CAST(cur.last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time
         FROM (SELECT 1)
@@ -554,7 +562,7 @@ def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tupl
         """,
         (user_key,),
     ).fetchone()
-    return row[0], row[1], row[2], row[3]
+    return row[0], row[1], row[2]
 
 
 def test_user_status_detection() -> None:
@@ -571,7 +579,7 @@ def test_user_status_detection() -> None:
         )
         conn = sqlite3.connect(db_path)
         try:
-            assert user_status_like_shell(conn, "BENZY") == ("online", "BENZY@1:1.1.1.1,1.1.1.2", "2023-11-15 06:13:20")
+            assert user_status_like_shell(conn, "BENZY") == ("online", "BENZY@1", "BENZY@1:1.1.1.1,1.1.1.2", "2023-11-15 06:13:20", fmt_m(1), fmt_m(2), fmt_m(3))
             assert user_status_like_shell(conn, "MISSING")[0] == "not-found"
             conn.execute("DELETE FROM inbound_client_ips")
             conn.commit()
@@ -597,8 +605,8 @@ def test_user_last_online_detection() -> None:
         )
         conn = sqlite3.connect(db_path)
         try:
-            assert user_last_online_like_shell(conn, "BENZY") == ("seen", 1700000100000, "BENZY@1,BENZY@2", "2023-11-15 06:15:00")
-            assert user_last_online_like_shell(conn, "MISSING") == ("not-found", 0, "", "")
+            assert user_last_online_like_shell(conn, "BENZY") == ("seen", "BENZY@1,BENZY@2", "2023-11-15 06:15:00")
+            assert user_last_online_like_shell(conn, "MISSING") == ("not-found", "", "")
         finally:
             conn.close()
             gc.collect()

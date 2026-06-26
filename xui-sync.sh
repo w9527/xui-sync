@@ -1848,7 +1848,7 @@ cmd_user_status_node() {
   require_local_db
 
   if ! has_table "$DB_PATH" "client_traffics"; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" "" "" "" "" ""
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" "" "" "" ""
     return 0
   fi
 
@@ -1919,11 +1919,10 @@ cmd_user_status_node() {
       END AS status,
       COALESCE(cur.matched_emails, '') AS matched_emails,
       COALESCE(ips.ips_list, '') AS ips,
-      COALESCE(cur.last_online, 0) AS last_online,
       COALESCE(cur.last_online_time, '') AS last_online_time,
-      COALESCE(cur.up, 0) AS up,
-      COALESCE(cur.down, 0) AS down,
-      COALESCE(cur.all_time, 0) AS all_time
+      printf('%.2fM', COALESCE(cur.up, 0) / 1048576.0) AS up,
+      printf('%.2fM', COALESCE(cur.down, 0) / 1048576.0) AS down,
+      printf('%.2fM', COALESCE(cur.all_time, 0) / 1048576.0) AS all_time
     FROM ips
     LEFT JOIN cur ON 1=1;
   "
@@ -1966,17 +1965,17 @@ cmd_user_status() {
     name="$(node_field "$node" 1)"
     job_file="$worker_dir/${name}.out"
     if [[ ! -f "$job_file" ]]; then
-      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "" "")")
+      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "")")
       continue
     fi
     remote_line="$(<"$job_file")"
     if [[ "$remote_line" == "OFFLINE" ]]; then
-      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "offline" "" "" "" "" "" "" "")")
+      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "offline" "" "" "" "" "" "")")
       connection_error_lines+=("$(printf '%s\t%s' "$name" "offline")")
       continue
     fi
     if [[ -n "$remote_line" ]]; then
-      IFS=$'\t' read -r remote_server remote_user_key remote_status remote_matched remote_ips remote_last_online remote_last_online_time remote_up remote_down remote_all_time <<< "$remote_line"
+      IFS=$'\t' read -r remote_server remote_user_key remote_status remote_matched remote_ips remote_last_online_time remote_up remote_down remote_all_time <<< "$remote_line"
       case "$remote_status" in
         online) online_lines+=("$remote_line") ;;
         seen) seen_lines+=("$remote_line") ;;
@@ -1984,14 +1983,14 @@ cmd_user_status() {
         not-found|*) not_found_lines+=("$remote_line") ;;
       esac
     else
-      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "" "")")
+      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "")")
     fi
   done
 
   rm -rf "$worker_dir"
 
   local status_header
-  status_header='server	user_key	status	matched_emails	ips	last_online	last_online_time	up	down	all_time'
+  status_header='server	user_key	status	matched_emails	ips	last_online_time	up(M)	down(M)	all_time(M)'
 
   printf '== current online ==\n'
   printf '%s\n' "$status_header"
@@ -2038,7 +2037,7 @@ cmd_user_last_online_node() {
   require_local_db
 
   if ! has_table "$DB_PATH" "client_traffics"; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" ""
+    printf '%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" ""
     return 0
   fi
 
@@ -2077,7 +2076,6 @@ cmd_user_last_online_node() {
         ELSE 'seen'
       END AS status,
       COALESCE(cur.matched_emails, '') AS matched_emails,
-      COALESCE(cur.last_online, 0) AS last_online,
       COALESCE($last_online_time_expr, '') AS last_online_time
     FROM (SELECT 1) AS one
     LEFT JOIN cur ON 1=1;
@@ -2092,7 +2090,7 @@ cmd_user_last_online() {
   need_cmd sqlite3
   load_config
 
-  printf 'server\tuser_key\tstatus\tmatched_emails\tlast_online\tlast_online_time\n'
+  printf 'server\tuser_key\tstatus\tmatched_emails\tlast_online_time\n'
   local node name host user port remote_script remote_line
   for node in "${NODES[@]}"; do
     name="$(node_field "$node" 1)"
@@ -2103,13 +2101,13 @@ cmd_user_last_online() {
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
     if ! remote_line="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' user-last-online-node $(printf '%q' "$user_key")" | tail -n 1)"; then
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "offline" "" "" ""
+      printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "offline" "" ""
       continue
     fi
     if [[ -n "$remote_line" ]]; then
       printf '%s\n' "$remote_line"
     else
-      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "not-found" "" "" ""
+      printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$user_key" "not-found" "" ""
     fi
   done
 }
