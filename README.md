@@ -23,6 +23,8 @@
 ## 项目文件
 
 - [`xui-sync.sh`](/D:/Documents/Codex/xui-sync/xui-sync.sh)：主脚本
+- [`xui-sync.ps1`](/D:/Documents/Codex/xui-sync/xui-sync.ps1)：Windows PowerShell 启动器
+- [`xui-sync.cmd`](/D:/Documents/Codex/xui-sync/xui-sync.cmd)：Windows 启动器，供 PowerShell / CMD 直接调用
 - [`xui-sync.conf.example`](/D:/Documents/Codex/xui-sync/xui-sync.conf.example)：配置示例
 - [`tests/smoke_sync.py`](/D:/Documents/Codex/xui-sync/tests/smoke_sync.py)：本地 smoke test
 
@@ -42,6 +44,15 @@ apt-get install -y sqlite3 tar openssh-client openssh-server
 ```bash
 install -m 0755 xui-sync.sh /usr/local/bin/xui-sync.sh
 ```
+
+如果你在 Windows 上把项目目录加入 `PATH`，建议直接用：
+
+```powershell
+xui-sync master
+```
+
+PowerShell 会优先调用仓库里的 `xui-sync.ps1`，再转到 Bash 主脚本。  
+如果你在 `cmd.exe` 里执行，也可以直接用 `xui-sync.cmd master`。
 
 ### 3. 准备配置
 
