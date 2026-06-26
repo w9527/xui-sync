@@ -122,6 +122,8 @@ CONFIG_MASTER_NODE="sg-01"
 ./xui-sync.sh summary /var/lib/xui-sync/master/merged-traffic.db
 ```
 
+`summary` 里的 `up`、`down`、`all_time` 也会以 `M` 为单位显示。
+
 ### 流量重置
 
 重置全部用户流量：
