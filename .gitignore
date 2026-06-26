@@ -1,0 +1,6 @@
+xui-sync.conf
+x-ui.db
+*.db-journal
+*.db-wal
+*.db-shm
+.uploads/

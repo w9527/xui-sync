@@ -1,0 +1,24 @@
+# Copy to xui-sync.conf on the master server.
+#
+# Format:
+#   "node_name|host|ssh_user|ssh_port|remote_script_path"
+#
+# Requirements:
+# - The same xui-sync.sh must already exist on every node.
+# - ssh_user needs permission to read/write /etc/x-ui/x-ui.db and restart x-ui.
+#   In practice this usually means root, or a user with passwordless sudo wrapped
+#   by a small root-owned remote script.
+
+NODES=(
+  "sg-01|203.0.113.10|root|22|/usr/local/bin/xui-sync.sh"
+  "jp-01|203.0.113.11|root|22|/usr/local/bin/xui-sync.sh"
+  "us-01|203.0.113.12|root|22|/usr/local/bin/xui-sync.sh"
+)
+
+# Configuration sync settings
+# Set CONFIG_SYNC_ENABLED=1 to enable configuration synchronization
+CONFIG_SYNC_ENABLED=0
+
+# Specify which node is the master for configuration (must match a node_name in NODES)
+# Configuration from this node will be synced to all other nodes
+CONFIG_MASTER_NODE="sg-01"
