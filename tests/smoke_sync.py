@@ -512,8 +512,8 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str
         )
         SELECT
           CASE
-            WHEN COALESCE(ips.ips_list, '') <> '' OR COALESCE(cur.last_online, 0) > 0 THEN 'online'
             WHEN cur.user_key IS NULL THEN 'not-found'
+            WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
             ELSE 'offline'
           END AS status,
           COALESCE(ips.ips_list, '') AS ips
@@ -541,6 +541,9 @@ def test_user_status_detection() -> None:
         try:
             assert user_status_like_shell(conn, "BENZY") == ("online", "BENZY@1:1.1.1.1,1.1.1.2")
             assert user_status_like_shell(conn, "MISSING")[0] == "not-found"
+            conn.execute("DELETE FROM inbound_client_ips")
+            conn.commit()
+            assert user_status_like_shell(conn, "BENZY")[0] == "offline"
         finally:
             conn.close()
             gc.collect()

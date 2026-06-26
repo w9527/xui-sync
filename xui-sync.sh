@@ -1857,8 +1857,8 @@ cmd_user_status_node() {
       $(quote_sql_literal "$SERVER_ID") AS server_id,
       $(quote_sql_literal "$user_key") AS user_key,
       CASE
-        WHEN COALESCE(ips.ips_list, '') <> '' OR COALESCE(cur.last_online, 0) > 0 THEN 'online'
         WHEN cur.user_key IS NULL THEN 'not-found'
+        WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
         ELSE 'offline'
       END AS status,
       COALESCE(cur.matched_emails, '') AS matched_emails,
