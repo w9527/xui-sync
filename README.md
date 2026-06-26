@@ -7,7 +7,7 @@
 - 本地服务器不运行 `3x-ui`，只作为命令执行端
 - 远程服务器运行 `3x-ui`
 - 其中一台远程服务器由 `CONFIG_MASTER_NODE` 指定为配置主节点
-- 用户识别按 `@` 前缀归并，例如 `BENZY@1`、`BENZY@2`、`BENZY@3` 视为同一用户家族
+- 用户识别按 `@` 前缀归并，例如 `USER@1`、`USER@2`、`USER@3` 视为同一用户家族
 - 只同步用户流量和配置，不修改 `x-ui.db` 的数据结构
 
 ## 能做什么
@@ -106,14 +106,14 @@ CONFIG_MASTER_NODE="sg-01"
 重置指定用户家族：
 
 ```bash
-./xui-sync.sh reset-traffic BENZY
+./xui-sync.sh reset-traffic USER
 ```
 
 主服务器批量重置：
 
 ```bash
 ./xui-sync.sh master-reset-traffic
-./xui-sync.sh master-reset-traffic BENZY
+./xui-sync.sh master-reset-traffic USER
 ```
 
 说明：
@@ -156,7 +156,7 @@ CONFIG_MASTER_NODE="sg-01"
 ### 删除用户
 
 ```bash
-./xui-sync.sh delete-user BENZY
+./xui-sync.sh delete-user USER
 ```
 
 会按用户家族删除相关记录：
@@ -169,7 +169,7 @@ CONFIG_MASTER_NODE="sg-01"
 ### 查看在线状态
 
 ```bash
-./xui-sync.sh user-status BENZY
+./xui-sync.sh user-status USER
 ```
 
 会输出该用户在每台服务器上的状态，以及当前连接痕迹。
@@ -229,3 +229,22 @@ systemctl start x-ui
 - 不要把真实的 `xui-sync.conf` 和 `x-ui.db` 提交到公开仓库
 - 用户家族是按 `@` 前缀匹配，不是按完整 email 字符串匹配
 
+## Release Notes
+
+### v0.1.0
+
+这是当前公开版本，主要包含：
+
+- 多节点用户流量汇总与同步
+- 用户当前流量和累计流量同步
+- 按用户家族进行流量重置
+- 配置主节点驱动的配置同步
+- 本地命令端添加用户
+- 删除用户家族
+- 查看用户在线状态
+
+已知约束：
+
+- 不修改 `x-ui.db` 的表结构
+- 本地服务器只做命令执行端
+- 远程节点离线时会跳过，不会强制写回
