@@ -565,6 +565,18 @@ def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tupl
     return row[0], row[1], row[2]
 
 
+def summary_last_online_like_shell(conn: sqlite3.Connection) -> str:
+    row = conn.execute(
+        """
+        SELECT CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END
+        FROM client_traffic_totals
+        ORDER BY (up + down) DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    return row[0] if row else ""
+
+
 def test_user_status_detection() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "status.db"
@@ -612,6 +624,25 @@ def test_user_last_online_detection() -> None:
             gc.collect()
 
 
+def test_summary_last_online_detection() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "summary.db"
+        exec_sql(
+            db_path,
+            """
+            CREATE TABLE client_traffic_totals (user_key TEXT PRIMARY KEY, up INTEGER, down INTEGER, all_time INTEGER, last_online INTEGER, seen_count INTEGER);
+            INSERT INTO client_traffic_totals(user_key, up, down, all_time, last_online, seen_count) VALUES
+              ('BENZY', 1048576, 2097152, 3145728, 1700000100000, 1);
+            """,
+        )
+        conn = sqlite3.connect(db_path)
+        try:
+            assert summary_last_online_like_shell(conn) == "2023-11-15 06:15:00"
+        finally:
+            conn.close()
+            gc.collect()
+
+
 def main() -> None:
     test_config_apply_compat()
     test_master_reset_policy()
@@ -621,6 +652,7 @@ def main() -> None:
     test_delete_user_family()
     test_user_status_detection()
     test_user_last_online_detection()
+    test_summary_last_online_detection()
     print("smoke tests passed")
 
 

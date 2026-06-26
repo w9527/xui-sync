@@ -1270,25 +1270,27 @@ cmd_summary() {
   local db="${1:-$DB_PATH}"
   [[ -f "$db" ]] || die "db not found: $db"
   if has_table "$db" "client_traffics"; then
-    local all_time_expr last_online_expr
+    local all_time_expr last_online_expr last_online_time_expr
     all_time_expr="up + down"
     last_online_expr="0"
+    last_online_time_expr="''"
     if has_column "$db" "client_traffics" "all_time"; then
       all_time_expr="COALESCE(all_time, up + down)"
     fi
     if has_column "$db" "client_traffics" "last_online"; then
       last_online_expr="last_online"
+      last_online_time_expr="CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END"
     fi
     if [[ -f "$STATE_DB" ]] && has_table "$STATE_DB" "xui_sync_client_state"; then
       sqlite3 -header -column "$db" \
-        "ATTACH DATABASE $(quote_sql_literal "$STATE_DB") AS st; WITH cur AS (SELECT CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key, SUM(up) AS up_raw, SUM(down) AS down_raw, SUM($all_time_expr) AS all_time_raw, MAX($last_online_expr) AS last_online, COUNT(*) AS entries FROM client_traffics WHERE email IS NOT NULL AND email <> '' GROUP BY user_key), totals AS (SELECT cur.user_key, COALESCE(sync.synced_up, 0) + CASE WHEN cur.up_raw - COALESCE(sync.base_up, 0) > 0 THEN cur.up_raw - COALESCE(sync.base_up, 0) ELSE 0 END AS up_raw, COALESCE(sync.synced_down, 0) + CASE WHEN cur.down_raw - COALESCE(sync.base_down, 0) > 0 THEN cur.down_raw - COALESCE(sync.base_down, 0) ELSE 0 END AS down_raw, COALESCE(sync.synced_all_time, 0) + CASE WHEN cur.all_time_raw - COALESCE(sync.base_all_time, 0) > 0 THEN cur.all_time_raw - COALESCE(sync.base_all_time, 0) ELSE 0 END AS all_time_raw, MAX(cur.last_online, COALESCE(sync.synced_last_online, 0)) AS last_online, cur.entries FROM cur LEFT JOIN st.xui_sync_client_state sync ON sync.user_key = cur.user_key) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], last_online, entries FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20; DETACH DATABASE st;"
+        "ATTACH DATABASE $(quote_sql_literal "$STATE_DB") AS st; WITH cur AS (SELECT CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key, SUM(up) AS up_raw, SUM(down) AS down_raw, SUM($all_time_expr) AS all_time_raw, MAX($last_online_expr) AS last_online, MAX($last_online_time_expr) AS last_online_time, COUNT(*) AS entries FROM client_traffics WHERE email IS NOT NULL AND email <> '' GROUP BY user_key), totals AS (SELECT cur.user_key, COALESCE(sync.synced_up, 0) + CASE WHEN cur.up_raw - COALESCE(sync.base_up, 0) > 0 THEN cur.up_raw - COALESCE(sync.base_up, 0) ELSE 0 END AS up_raw, COALESCE(sync.synced_down, 0) + CASE WHEN cur.down_raw - COALESCE(sync.base_down, 0) > 0 THEN cur.down_raw - COALESCE(sync.base_down, 0) ELSE 0 END AS down_raw, COALESCE(sync.synced_all_time, 0) + CASE WHEN cur.all_time_raw - COALESCE(sync.base_all_time, 0) > 0 THEN cur.all_time_raw - COALESCE(sync.base_all_time, 0) ELSE 0 END AS all_time_raw, MAX(cur.last_online, COALESCE(sync.synced_last_online, 0)) AS last_online, MAX(cur.last_online_time, '') AS last_online_time, cur.entries FROM cur LEFT JOIN st.xui_sync_client_state sync ON sync.user_key = cur.user_key) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], last_online_time, entries FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20; DETACH DATABASE st;"
     else
       sqlite3 -header -column "$db" \
-        "WITH totals AS (SELECT CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key, SUM(up) AS up_raw, SUM(down) AS down_raw, SUM($all_time_expr) AS all_time_raw, MAX($last_online_expr) AS last_online, COUNT(*) AS entries FROM client_traffics WHERE email IS NOT NULL AND email <> '' GROUP BY user_key) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], last_online, entries FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20;"
+        "WITH totals AS (SELECT CASE WHEN instr(email, '@') > 0 THEN substr(email, 1, instr(email, '@') - 1) ELSE email END AS user_key, SUM(up) AS up_raw, SUM(down) AS down_raw, SUM($all_time_expr) AS all_time_raw, MAX($last_online_expr) AS last_online, MAX($last_online_time_expr) AS last_online_time, COUNT(*) AS entries FROM client_traffics WHERE email IS NOT NULL AND email <> '' GROUP BY user_key) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], last_online_time, entries FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20;"
     fi
   elif has_table "$db" "client_traffic_totals"; then
     sqlite3 -header -column "$db" \
-      "WITH totals AS (SELECT user_key, up AS up_raw, down AS down_raw, all_time AS all_time_raw, last_online, seen_count FROM client_traffic_totals) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], last_online, seen_count FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20;"
+      "WITH totals AS (SELECT user_key, up AS up_raw, down AS down_raw, all_time AS all_time_raw, last_online, seen_count FROM client_traffic_totals) SELECT user_key, printf('%.2fM', up_raw / 1048576.0) AS [up(M)], printf('%.2fM', down_raw / 1048576.0) AS [down(M)], printf('%.2fM', all_time_raw / 1048576.0) AS [all_time(M)], CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time, seen_count FROM totals ORDER BY (up_raw + down_raw) DESC LIMIT 20;"
   else
     die "no supported traffic table in $db"
   fi
