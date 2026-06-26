@@ -489,7 +489,7 @@ def test_delete_user_family() -> None:
             gc.collect()
 
 
-def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int = 1700000005000, grace_ms: int = 60000) -> tuple[str, str]:
+def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int = 1700000005000, grace_ms: int = 60000) -> tuple[str, str, str]:
     row = conn.execute(
         """
         WITH cur AS (
@@ -518,16 +518,17 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int 
             WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
             ELSE 'offline'
           END AS status,
-          COALESCE(ips.ips_list, '') AS ips
+          COALESCE(ips.ips_list, '') AS ips,
+          CASE WHEN COALESCE(cur.last_online, 0) > 0 THEN datetime(CAST(cur.last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time
         FROM ips
         LEFT JOIN cur ON 1=1
         """,
         (user_key, user_key, now_ms, grace_ms),
     ).fetchone()
-    return row[0], row[1]
+    return row[0], row[1], row[2]
 
 
-def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, int, str]:
+def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, int, str, str]:
     row = conn.execute(
         """
         WITH cur AS (
@@ -546,13 +547,14 @@ def user_last_online_like_shell(conn: sqlite3.Connection, user_key: str) -> tupl
             ELSE 'seen'
           END AS status,
           COALESCE(cur.last_online, 0) AS last_online,
-          COALESCE(cur.matched_emails, '') AS matched_emails
+          COALESCE(cur.matched_emails, '') AS matched_emails,
+          CASE WHEN COALESCE(cur.last_online, 0) > 0 THEN datetime(CAST(cur.last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END AS last_online_time
         FROM (SELECT 1)
         LEFT JOIN cur ON 1=1
         """,
         (user_key,),
     ).fetchone()
-    return row[0], row[1], row[2]
+    return row[0], row[1], row[2], row[3]
 
 
 def test_user_status_detection() -> None:
@@ -569,7 +571,7 @@ def test_user_status_detection() -> None:
         )
         conn = sqlite3.connect(db_path)
         try:
-            assert user_status_like_shell(conn, "BENZY") == ("online", "BENZY@1:1.1.1.1,1.1.1.2")
+            assert user_status_like_shell(conn, "BENZY") == ("online", "BENZY@1:1.1.1.1,1.1.1.2", "2023-11-15 06:13:20")
             assert user_status_like_shell(conn, "MISSING")[0] == "not-found"
             conn.execute("DELETE FROM inbound_client_ips")
             conn.commit()
@@ -595,8 +597,8 @@ def test_user_last_online_detection() -> None:
         )
         conn = sqlite3.connect(db_path)
         try:
-            assert user_last_online_like_shell(conn, "BENZY") == ("seen", 1700000100000, "BENZY@1,BENZY@2")
-            assert user_last_online_like_shell(conn, "MISSING") == ("not-found", 0, "")
+            assert user_last_online_like_shell(conn, "BENZY") == ("seen", 1700000100000, "BENZY@1,BENZY@2", "2023-11-15 06:15:00")
+            assert user_last_online_like_shell(conn, "MISSING") == ("not-found", 0, "", "")
         finally:
             conn.close()
             gc.collect()

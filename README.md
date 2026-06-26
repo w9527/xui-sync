@@ -202,6 +202,7 @@ CONFIG_MASTER_NODE="sg-01"
 会按 `online`、`seen`、`offline`、`not-found` 分组输出该用户在每台服务器上的状态，以及当前连接痕迹。
 连不上的节点会单独出现在 `connection errors` 分组里。
 每个分组都会重复输出自己的列头，方便单独复制查看。
+输出中的 `last_online_time` 是按东八区（UTC+8）转换后的可读时间。
 
 这里的“在线”判断优先看当前连接痕迹；如果当前没有连接痕迹，但 `last_online` 还在最近窗口内，也会算作 `online`。
 `last_online` 只作为上次在线时间展示，不会把很久以前的记录算成当前在线。
@@ -214,6 +215,7 @@ CONFIG_MASTER_NODE="sg-01"
 ```
 
 这个命令只查看每台服务器上的最后在线时间，不判断当前是否在线。
+输出中的 `last_online_time` 同样使用东八区（UTC+8）。
 
 ## 本地自检
 

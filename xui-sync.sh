@@ -1848,13 +1848,14 @@ cmd_user_status_node() {
   require_local_db
 
   if ! has_table "$DB_PATH" "client_traffics"; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" "" "" "" ""
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$SERVER_ID" "$user_key" "not-found" "" "" "" "" "" "" ""
     return 0
   fi
 
-  local all_time_expr last_online_expr online_grace_ms now_ms
+  local all_time_expr last_online_expr last_online_time_expr online_grace_ms now_ms
   all_time_expr="COALESCE(up, 0) + COALESCE(down, 0)"
   last_online_expr="0"
+  last_online_time_expr="''"
   online_grace_ms="${USER_STATUS_ONLINE_GRACE_MS:-60000}"
   now_ms="$(date +%s%3N)"
   if has_column "$DB_PATH" "client_traffics" "all_time"; then
@@ -1862,6 +1863,7 @@ cmd_user_status_node() {
   fi
   if has_column "$DB_PATH" "client_traffics" "last_online"; then
     last_online_expr="COALESCE(last_online, 0)"
+    last_online_time_expr="CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END"
   fi
 
   local ips_cte="SELECT NULL AS ips_list"
@@ -1890,7 +1892,8 @@ cmd_user_status_node() {
         SUM(COALESCE(up, 0)) AS up,
         SUM(COALESCE(down, 0)) AS down,
         SUM($all_time_expr) AS all_time,
-        MAX($last_online_expr) AS last_online
+        MAX($last_online_expr) AS last_online,
+        MAX($last_online_time_expr) AS last_online_time
       FROM client_traffics
       WHERE email IS NOT NULL AND email <> ''
         AND (
@@ -1917,6 +1920,7 @@ cmd_user_status_node() {
       COALESCE(cur.matched_emails, '') AS matched_emails,
       COALESCE(ips.ips_list, '') AS ips,
       COALESCE(cur.last_online, 0) AS last_online,
+      COALESCE(cur.last_online_time, '') AS last_online_time,
       COALESCE(cur.up, 0) AS up,
       COALESCE(cur.down, 0) AS down,
       COALESCE(cur.all_time, 0) AS all_time
@@ -1962,17 +1966,17 @@ cmd_user_status() {
     name="$(node_field "$node" 1)"
     job_file="$worker_dir/${name}.out"
     if [[ ! -f "$job_file" ]]; then
-      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "not-found" "" "" "" "" "" "")")
+      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "" "")")
       continue
     fi
     remote_line="$(<"$job_file")"
     if [[ "$remote_line" == "OFFLINE" ]]; then
-      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "offline" "" "" "" "" "" "")")
+      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "offline" "" "" "" "" "" "" "")")
       connection_error_lines+=("$(printf '%s\t%s' "$name" "offline")")
       continue
     fi
     if [[ -n "$remote_line" ]]; then
-      IFS=$'\t' read -r remote_server remote_user_key remote_status remote_matched remote_ips remote_last_online remote_up remote_down remote_all_time <<< "$remote_line"
+      IFS=$'\t' read -r remote_server remote_user_key remote_status remote_matched remote_ips remote_last_online remote_last_online_time remote_up remote_down remote_all_time <<< "$remote_line"
       case "$remote_status" in
         online) online_lines+=("$remote_line") ;;
         seen) seen_lines+=("$remote_line") ;;
@@ -1980,35 +1984,38 @@ cmd_user_status() {
         not-found|*) not_found_lines+=("$remote_line") ;;
       esac
     else
-      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "not-found" "" "" "" "" "" "")")
+      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "$user_key" "not-found" "" "" "" "" "" "" "")")
     fi
   done
 
   rm -rf "$worker_dir"
 
+  local status_header
+  status_header='server	user_key	status	matched_emails	ips	last_online	last_online_time	up	down	all_time'
+
   printf '== current online ==\n'
-  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
+  printf '%s\n' "$status_header"
   if [[ "${#online_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${online_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== recently seen ==\n'
-  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
+  printf '%s\n' "$status_header"
   if [[ "${#seen_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${seen_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== offline ==\n'
-  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
+  printf '%s\n' "$status_header"
   if [[ "${#offline_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${offline_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== not found ==\n'
-  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
+  printf '%s\n' "$status_header"
   if [[ "${#not_found_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${not_found_lines[@]}"
   else
@@ -2035,12 +2042,12 @@ cmd_user_last_online_node() {
     return 0
   fi
 
-  local last_online_expr last_online_utc_expr
+  local last_online_expr last_online_time_expr
   last_online_expr="0"
-  last_online_utc_expr="''"
+  last_online_time_expr="''"
   if has_column "$DB_PATH" "client_traffics" "last_online"; then
     last_online_expr="COALESCE(last_online, 0)"
-    last_online_utc_expr="CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch') ELSE '' END"
+    last_online_time_expr="CASE WHEN COALESCE(last_online, 0) > 0 THEN datetime(CAST(last_online / 1000 AS INTEGER), 'unixepoch', '+8 hours') ELSE '' END"
   fi
 
   sqlite3 -noheader -separator $'\t' "$DB_PATH" "
@@ -2071,7 +2078,7 @@ cmd_user_last_online_node() {
       END AS status,
       COALESCE(cur.matched_emails, '') AS matched_emails,
       COALESCE(cur.last_online, 0) AS last_online,
-      COALESCE($last_online_utc_expr, '') AS last_online_utc
+      COALESCE($last_online_time_expr, '') AS last_online_time
     FROM (SELECT 1) AS one
     LEFT JOIN cur ON 1=1;
   "
@@ -2085,7 +2092,7 @@ cmd_user_last_online() {
   need_cmd sqlite3
   load_config
 
-  printf 'server\tuser_key\tstatus\tmatched_emails\tlast_online\tlast_online_utc\n'
+  printf 'server\tuser_key\tstatus\tmatched_emails\tlast_online\tlast_online_time\n'
   local node name host user port remote_script remote_line
   for node in "${NODES[@]}"; do
     name="$(node_field "$node" 1)"
