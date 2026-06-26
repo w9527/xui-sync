@@ -56,7 +56,7 @@ apt-get install -y sqlite3 tar openssh-client openssh-server
 如果要拷贝到远程服务器：
 
 ```bash
-./xui-sync.sh install hostess.195522.xyz /root/bin 522
+./xui-sync.sh install --remote hostess.195522.xyz /root/bin 522
 ```
 
 如果远端登录用户不是当前用户名，可以先设置 `INSTALL_REMOTE_USER=root`，或者直接用 `user@host` 形式的主机名。

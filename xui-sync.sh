@@ -172,52 +172,47 @@ cmd_export() {
 cmd_install() {
   need_cmd install
 
-  local source dest_dir port host target target_path target_file
+  local source dest_dir remote_host remote_path remote_port target target_path target_file
   source="$SCRIPT_DIR/xui-sync.sh"
   [[ -f "$source" ]] || die "source script not found: $source"
 
-  case "$#" in
-    0)
-      dest_dir="$DEFAULT_INSTALL_DIR"
-      ;;
-    1)
-      dest_dir="$1"
-      ;;
-    2)
-      host="$1"
-      dest_dir="$2"
-      port="22"
-      ;;
-    3)
-      host="$1"
-      dest_dir="$2"
-      port="$3"
-      ;;
-    *)
-      die "usage: $0 install [dest_dir] | install <host> <dest_dir> [port]"
-      ;;
-  esac
+  dest_dir="$DEFAULT_INSTALL_DIR"
+  if [[ "${1:-}" != "" && "$1" != --remote ]]; then
+    dest_dir="$1"
+    shift
+  fi
 
-  if [[ -z "${port:-}" ]]; then
-    mkdir -p "$dest_dir"
-    install -m 0755 "$source" "$dest_dir/$(basename "$source")"
-    log "installed locally to $dest_dir/$(basename "$source")"
+  if [[ "${1:-}" != "" ]]; then
+    [[ "$1" == --remote ]] || die "usage: $0 install [dest_dir] [--remote <host> <path> [port]]"
+    shift
+    [[ "$#" -ge 2 ]] || die "usage: $0 install [dest_dir] [--remote <host> <path> [port]]"
+    remote_host="$1"
+    remote_path="$2"
+    remote_port="${3:-22}"
+    [[ "$#" -le 3 ]] || die "usage: $0 install [dest_dir] [--remote <host> <path> [port]]"
+  fi
+
+  mkdir -p "$dest_dir"
+  install -m 0755 "$source" "$dest_dir/$(basename "$source")"
+  log "installed locally to $dest_dir/$(basename "$source")"
+
+  if [[ -z "${remote_host:-}" ]]; then
     return 0
   fi
 
   need_cmd ssh
   need_cmd scp
 
-  target="$host"
+  target="$remote_host"
   if [[ "$target" != *@* ]]; then
     target="$INSTALL_REMOTE_USER@$target"
   fi
-  target_path="$dest_dir"
+  target_path="$remote_path"
   target_file="$target_path/$(basename "$source")"
 
-  ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$target" "mkdir -p $(printf '%q' "$target_path")"
-  scp "${SSH_BASE_OPTS[@]}" -P "$port" "$source" "$target:$(printf '%q' "$target_file")" >/dev/null
-  ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$target" "chmod 0755 $(printf '%q' "$target_file")"
+  ssh "${SSH_BASE_OPTS[@]}" -p "$remote_port" "$target" "mkdir -p $(printf '%q' "$target_path")"
+  scp "${SSH_BASE_OPTS[@]}" -P "$remote_port" "$source" "$target:$(printf '%q' "$target_file")" >/dev/null
+  ssh "${SSH_BASE_OPTS[@]}" -p "$remote_port" "$target" "chmod 0755 $(printf '%q' "$target_file")"
   log "installed remotely to $target:$target_file"
 }
 
@@ -2115,7 +2110,7 @@ Usage:
 
 Traffic Sync (流量同步):
   $0 install [dest_dir]
-  $0 install <port> <host> <dest_dir>
+  $0 install [dest_dir] --remote <host> <path> [port]
   $0 export
   $0 merge-dir [snapshots_dir] [output_db]
   $0 apply-traffic /path/to/merged-traffic.db
