@@ -172,7 +172,7 @@ cmd_export() {
 cmd_install() {
   need_cmd install
 
-  local source dest_dir port host target target_user target_path target_file
+  local source dest_dir port host target target_path target_file
   source="$SCRIPT_DIR/xui-sync.sh"
   [[ -f "$source" ]] || die "source script not found: $source"
 
@@ -183,13 +183,18 @@ cmd_install() {
     1)
       dest_dir="$1"
       ;;
+    2)
+      host="$1"
+      dest_dir="$2"
+      port="22"
+      ;;
     3)
-      port="$1"
-      host="$2"
-      dest_dir="$3"
+      host="$1"
+      dest_dir="$2"
+      port="$3"
       ;;
     *)
-      die "usage: $0 install [dest_dir] | install <port> <host> <dest_dir>"
+      die "usage: $0 install [dest_dir] | install <host> <dest_dir> [port]"
       ;;
   esac
 
@@ -207,7 +212,6 @@ cmd_install() {
   if [[ "$target" != *@* ]]; then
     target="$INSTALL_REMOTE_USER@$target"
   fi
-  target_user="${target%@*}"
   target_path="$dest_dir"
   target_file="$target_path/$(basename "$source")"
 
