@@ -185,6 +185,7 @@ CONFIG_MASTER_NODE="sg-01"
 
 会按 `online`、`seen`、`offline`、`not-found` 分组输出该用户在每台服务器上的状态，以及当前连接痕迹。
 连不上的节点会单独出现在 `connection errors` 分组里。
+每个分组都会重复输出自己的列头，方便单独复制查看。
 
 这里的“在线”判断以当前连接痕迹为准，`last_online` 只作为上次在线时间展示，不作为实时在线条件。
 如果某个用户当前没有连接痕迹但曾经出现过，`user-status` 可能显示为 `seen`。

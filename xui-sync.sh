@@ -1916,11 +1916,7 @@ cmd_user_status() {
     remote_line="$(<"$job_file")"
     if [[ "$remote_line" == "OFFLINE" ]]; then
       offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "offline" "" "" "" "" "" "")")
-      ssh_err_text=""
-      if [[ -f "$worker_dir/${name}.err" ]]; then
-        ssh_err_text="$(tr '\n' ' ' < "$worker_dir/${name}.err" | sed 's/[[:space:]]*$//')"
-      fi
-      [[ -n "$ssh_err_text" ]] && connection_error_lines+=("$(printf '%s\t%s' "$name" "$ssh_err_text")")
+      connection_error_lines+=("$(printf '%s\t%s' "$name" "offline")")
       continue
     fi
     if [[ -n "$remote_line" ]]; then
@@ -1938,32 +1934,36 @@ cmd_user_status() {
 
   rm -rf "$worker_dir"
 
-  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   printf '== current online ==\n'
+  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   if [[ "${#online_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${online_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== recently seen ==\n'
+  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   if [[ "${#seen_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${seen_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== offline ==\n'
+  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   if [[ "${#offline_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${offline_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== not found ==\n'
+  printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   if [[ "${#not_found_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${not_found_lines[@]}"
   else
     printf '(none)\n'
   fi
   printf '== connection errors ==\n'
+  printf 'server\tstatus\n'
   if [[ "${#connection_error_lines[@]}" -gt 0 ]]; then
     printf '%s\n' "${connection_error_lines[@]}"
   else
