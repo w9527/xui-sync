@@ -1882,7 +1882,8 @@ cmd_user_status() {
   load_config
 
   local online_lines=() seen_lines=() offline_lines=() not_found_lines=() connection_error_lines=()
-  local node name host user port remote_script remote_line ssh_err_file ssh_err_text
+  local node name host user port remote_script remote_line ssh_err_text worker_dir job_file
+  worker_dir="$(mktemp -d)"
   for node in "${NODES[@]}"; do
     name="$(node_field "$node" 1)"
     host="$(node_field "$node" 2)"
@@ -1891,15 +1892,37 @@ cmd_user_status() {
     remote_script="$(node_field "$node" 5)"
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
-    ssh_err_file="$(mktemp)"
-    if ! remote_line="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' user-status-node $(printf '%q' "$user_key")" 2>"$ssh_err_file" | tail -n 1)"; then
-      ssh_err_text="$(tr '\n' ' ' < "$ssh_err_file" | sed 's/[[:space:]]*$//')"
-      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "offline" "" "" "" "" "" "")")
-      [[ -n "$ssh_err_text" ]] && connection_error_lines+=("$(printf '%s\t%s' "$name" "$ssh_err_text")")
-      rm -f "$ssh_err_file"
+    (
+      local out_file err_file
+      out_file="$worker_dir/${name}.out"
+      err_file="$worker_dir/${name}.err"
+      if remote_line="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' user-status-node $(printf '%q' "$user_key")" 2>"$err_file" | tail -n 1)"; then
+        printf '%s\n' "$remote_line" > "$out_file"
+      else
+        printf 'OFFLINE\n' > "$out_file"
+      fi
+    ) &
+  done
+
+  wait || true
+
+  for node in "${NODES[@]}"; do
+    name="$(node_field "$node" 1)"
+    job_file="$worker_dir/${name}.out"
+    if [[ ! -f "$job_file" ]]; then
+      not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "not-found" "" "" "" "" "" "")")
       continue
     fi
-    rm -f "$ssh_err_file"
+    remote_line="$(<"$job_file")"
+    if [[ "$remote_line" == "OFFLINE" ]]; then
+      offline_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "offline" "" "" "" "" "" "")")
+      ssh_err_text=""
+      if [[ -f "$worker_dir/${name}.err" ]]; then
+        ssh_err_text="$(tr '\n' ' ' < "$worker_dir/${name}.err" | sed 's/[[:space:]]*$//')"
+      fi
+      [[ -n "$ssh_err_text" ]] && connection_error_lines+=("$(printf '%s\t%s' "$name" "$ssh_err_text")")
+      continue
+    fi
     if [[ -n "$remote_line" ]]; then
       IFS=$'\t' read -r remote_server remote_user_key remote_status remote_matched remote_ips remote_last_online remote_up remote_down remote_all_time <<< "$remote_line"
       case "$remote_status" in
@@ -1912,6 +1935,8 @@ cmd_user_status() {
       not_found_lines+=("$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$name" "not-found" "" "" "" "" "" "")")
     fi
   done
+
+  rm -rf "$worker_dir"
 
   printf 'server\tstatus\tmatched_emails\tips\tlast_online\tup\tdown\tall_time\n'
   printf '== current online ==\n'
