@@ -1852,9 +1852,11 @@ cmd_user_status_node() {
     return 0
   fi
 
-  local all_time_expr last_online_expr
+  local all_time_expr last_online_expr online_grace_ms now_ms
   all_time_expr="COALESCE(up, 0) + COALESCE(down, 0)"
   last_online_expr="0"
+  online_grace_ms="${USER_STATUS_ONLINE_GRACE_MS:-60000}"
+  now_ms="$(date +%s%3N)"
   if has_column "$DB_PATH" "client_traffics" "all_time"; then
     all_time_expr="COALESCE(all_time, COALESCE(up, 0) + COALESCE(down, 0))"
   fi
@@ -1908,6 +1910,7 @@ cmd_user_status_node() {
       CASE
         WHEN cur.user_key IS NULL THEN 'not-found'
         WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
+        WHEN COALESCE(cur.last_online, 0) > 0 AND $(quote_sql_literal "$now_ms") - COALESCE(cur.last_online, 0) <= $(quote_sql_literal "$online_grace_ms") THEN 'online'
         WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
         ELSE 'offline'
       END AS status,

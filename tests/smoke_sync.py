@@ -489,7 +489,7 @@ def test_delete_user_family() -> None:
             gc.collect()
 
 
-def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str, str]:
+def user_status_like_shell(conn: sqlite3.Connection, user_key: str, now_ms: int = 1700000005000, grace_ms: int = 60000) -> tuple[str, str]:
     row = conn.execute(
         """
         WITH cur AS (
@@ -514,6 +514,7 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str
           CASE
             WHEN cur.user_key IS NULL THEN 'not-found'
             WHEN COALESCE(ips.ips_list, '') <> '' THEN 'online'
+            WHEN COALESCE(cur.last_online, 0) > 0 AND ? - COALESCE(cur.last_online, 0) <= ? THEN 'online'
             WHEN COALESCE(cur.last_online, 0) > 0 THEN 'seen'
             ELSE 'offline'
           END AS status,
@@ -521,7 +522,7 @@ def user_status_like_shell(conn: sqlite3.Connection, user_key: str) -> tuple[str
         FROM ips
         LEFT JOIN cur ON 1=1
         """,
-        (user_key, user_key),
+        (user_key, user_key, now_ms, grace_ms),
     ).fetchone()
     return row[0], row[1]
 
@@ -572,7 +573,8 @@ def test_user_status_detection() -> None:
             assert user_status_like_shell(conn, "MISSING")[0] == "not-found"
             conn.execute("DELETE FROM inbound_client_ips")
             conn.commit()
-            assert user_status_like_shell(conn, "BENZY")[0] == "seen"
+            assert user_status_like_shell(conn, "BENZY")[0] == "online"
+            assert user_status_like_shell(conn, "BENZY", now_ms=1700001200000)[0] == "seen"
         finally:
             conn.close()
             gc.collect()
