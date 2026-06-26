@@ -16,6 +16,8 @@ CONFIG_MASTER_NODE="${CONFIG_MASTER_NODE:-}"
 SERVICE_NAME="${SERVICE_NAME:-$DEFAULT_SERVICE}"
 SERVER_ID="${SERVER_ID:-$(hostname -f 2>/dev/null || hostname)}"
 STOP_SERVICE_ON_APPLY="${STOP_SERVICE_ON_APPLY:-1}"
+SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-5}"
+SSH_BASE_OPTS=(-o BatchMode=yes -o ConnectTimeout="$SSH_CONNECT_TIMEOUT" -o ServerAliveInterval=5 -o ServerAliveCountMax=1 -o ConnectionAttempts=1)
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 CONFIG_FILE="${CONFIG_FILE:-$SCRIPT_DIR/xui-sync.conf}"
@@ -1048,12 +1050,12 @@ cmd_master_reset_traffic() {
 
     log "reset traffic on $name"
     if [[ "${#user_keys[@]}" -gt 0 ]]; then
-      if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' reset-traffic $(printf '%q ' "${user_keys[@]}")"; then
+      if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' reset-traffic $(printf '%q ' "${user_keys[@]}")"; then
         log "skip $name: reset failed"
         failed=1
       fi
     else
-      if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' reset-traffic"; then
+      if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' reset-traffic"; then
         log "skip $name: reset failed"
         failed=1
       fi
@@ -1115,7 +1117,7 @@ cmd_master_reset_traffic_all() {
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
     log "reset traffic (client + inbound) on $name"
-    if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' reset-traffic-all"; then
+    if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' reset-traffic-all"; then
       log "skip $name: reset failed"
       failed=1
     fi
@@ -1169,7 +1171,7 @@ cmd_master() {
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
     log "export $name"
-    if ! remote_archive="$(ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "SERVER_ID='$name' bash '$remote_script' export" | tail -n 1)"; then
+    if ! remote_archive="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "SERVER_ID='$name' bash '$remote_script' export" | tail -n 1)"; then
       log "skip $name: export failed"
       continue
     fi
@@ -1178,7 +1180,7 @@ cmd_master() {
       continue
     fi
     local_archive="$snapshots_dir/${name}.tar.gz"
-    if ! scp -P "$port" "$user@$host:$remote_archive" "$local_archive" >/dev/null; then
+    if ! scp "${SSH_BASE_OPTS[@]}" -P "$port" "$user@$host:$remote_archive" "$local_archive" >/dev/null; then
       log "skip $name: failed to download snapshot"
       rm -f "$local_archive"
       continue
@@ -1200,11 +1202,11 @@ cmd_master() {
     aggregate_remote="/tmp/xui-sync-merged-traffic-$run_id.db"
 
     log "push merged traffic to $name"
-    if ! scp -P "$port" "$merged_db" "$user@$host:$aggregate_remote" >/dev/null; then
+    if ! scp "${SSH_BASE_OPTS[@]}" -P "$port" "$merged_db" "$user@$host:$aggregate_remote" >/dev/null; then
       log "skip $name: failed to upload merged traffic"
       continue
     fi
-    if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' apply-traffic '$aggregate_remote' && rm -f '$aggregate_remote'"; then
+    if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' apply-traffic '$aggregate_remote' && rm -f '$aggregate_remote'"; then
       log "skip $name: failed to apply merged traffic"
       continue
     fi
@@ -1529,7 +1531,7 @@ cmd_config_sync() {
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
     log "config export $name"
-    if ! remote_archive="$(ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "SERVER_ID='$name' bash '$remote_script' config-export" | tail -n 1)"; then
+    if ! remote_archive="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "SERVER_ID='$name' bash '$remote_script' config-export" | tail -n 1)"; then
       log "skip $name: config export failed"
       continue
     fi
@@ -1538,7 +1540,7 @@ cmd_config_sync() {
       continue
     fi
     local_archive="$snapshots_dir/${name}.tar.gz"
-    if ! scp -P "$port" "$user@$host:$remote_archive" "$local_archive" >/dev/null; then
+    if ! scp "${SSH_BASE_OPTS[@]}" -P "$port" "$user@$host:$remote_archive" "$local_archive" >/dev/null; then
       log "skip $name: failed to download config snapshot"
       rm -f "$local_archive"
       continue
@@ -1565,11 +1567,11 @@ cmd_config_sync() {
     fi
 
     log "push config to $name"
-    if ! scp -P "$port" "$merged_db" "$user@$host:$aggregate_remote" >/dev/null; then
+    if ! scp "${SSH_BASE_OPTS[@]}" -P "$port" "$merged_db" "$user@$host:$aggregate_remote" >/dev/null; then
       log "skip $name: failed to upload config"
       continue
     fi
-    if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' config-apply '$aggregate_remote' && rm -f '$aggregate_remote'"; then
+    if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' config-apply '$aggregate_remote' && rm -f '$aggregate_remote'"; then
       log "skip $name: failed to apply config"
       continue
     fi
@@ -1653,7 +1655,7 @@ SQL
   fi
 
   log "add user on config master: $CONFIG_MASTER_NODE"
-  if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "$remote_cmd"; then
+  if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "$remote_cmd"; then
     die "failed to add user on config master: $CONFIG_MASTER_NODE"
   fi
 
@@ -1762,7 +1764,7 @@ cmd_delete_user() {
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
     log "delete user on $name"
-    if ! ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' delete-user-node $(printf '%q' "$user_key")"; then
+    if ! ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' delete-user-node $(printf '%q' "$user_key")"; then
       log "skip $name: delete failed"
       failed=1
     fi
@@ -1888,7 +1890,7 @@ cmd_user_status() {
     remote_script="$(node_field "$node" 5)"
     [[ -n "$name" && -n "$host" && -n "$user" && -n "$port" && -n "$remote_script" ]] || die "bad node spec: $node"
 
-    if ! remote_line="$(ssh -o ConnectTimeout=10 -p "$port" "$user@$host" "bash '$remote_script' user-status-node $(printf '%q' "$user_key")" | tail -n 1)"; then
+    if ! remote_line="$(ssh "${SSH_BASE_OPTS[@]}" -p "$port" "$user@$host" "bash '$remote_script' user-status-node $(printf '%q' "$user_key")" | tail -n 1)"; then
       printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "offline" "" "" "" "" "" ""
       continue
     fi

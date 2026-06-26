@@ -210,6 +210,7 @@ DB_PATH=/etc/x-ui/x-ui.db
 WORKDIR=/var/lib/xui-sync
 STATE_DB=/var/lib/xui-sync/state.db
 MASTER_STATE_DB=/var/lib/xui-sync/master/state.db
+SSH_CONNECT_TIMEOUT=5
 SYNC_INBOUND_TRAFFIC=0
 CONFIG_MASTER_NODE=sg-01
 SERVICE_NAME=x-ui
@@ -239,6 +240,7 @@ systemctl start x-ui
 - 建议先用 `ssh` 单独验证每台节点连通性
 - 不要把真实的 `xui-sync.conf` 和 `x-ui.db` 提交到公开仓库
 - 用户家族是按 `@` 前缀匹配，不是按完整 email 字符串匹配
+- 如果某台节点离线，脚本会按 `SSH_CONNECT_TIMEOUT` 等待后跳过
 
 ## Release Notes
 
